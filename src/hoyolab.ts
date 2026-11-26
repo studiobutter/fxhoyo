@@ -279,7 +279,10 @@ export class HoyolabClient {
   private readonly timeoutMs: number;
 
   constructor(options: HoyolabClientOptions = {}) {
-    this.fetchFn = options.fetchFn ?? fetch;
+    const customFetch = options.fetchFn;
+    // Wrap fetch so it is never invoked with `this` bound to the HoyolabClient instance
+    // (which throws "Illegal invocation" in Cloudflare Workers).
+    this.fetchFn = (input, init) => (customFetch ? customFetch(input, init) : fetch(input, init));
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 

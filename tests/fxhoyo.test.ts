@@ -414,4 +414,34 @@ describe("Hono app routes and short-link resolution", () => {
     assert.equal(previewRes.status, 200);
     assert.ok((await previewRes.text()).includes('id="discord:component-embed"'));
   });
+
+  it("invokes fetch without binding `this` to the HoyolabClient instance", async () => {
+    const sample = makeSampleImagePost();
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+
+    const strictGlobalFetch = function (this: unknown) {
+      calls++;
+      if (this !== undefined && this !== globalThis) {
+        throw new TypeError("Illegal invocation: function called with incorrect `this` reference.");
+      }
+      return Promise.resolve(
+        Response.json({ retcode: 0, message: "OK", data: { post: sample } })
+      );
+    } as typeof fetch;
+
+    globalThis.fetch = strictGlobalFetch;
+    try {
+      const defaultClient = new HoyolabClient();
+      const post1 = await defaultClient.fetchPost("9990001");
+      assert.equal(post1.post.post_id, "47467158");
+
+      const explicitClient = new HoyolabClient({ fetchFn: strictGlobalFetch });
+      const post2 = await explicitClient.fetchPost("9990002");
+      assert.equal(post2.post.post_id, "47467158");
+      assert.equal(calls, 2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
