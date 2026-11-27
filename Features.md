@@ -163,3 +163,36 @@ For platforms or clients that do not parse `discord:component-embed`, every post
 - **HTTP Caching:** Successful embed responses include `Cache-Control: public, max-age=300, s-maxage=300`.
 - **Timeouts & Redirect Bounds:** Upstream requests time out after `5,500 ms` (staying under Discord's 10-second crawler timeout) and follow at most `6` redirect hops.
 - **SSRF Protection (`isSafePublicUrl`):** Rejects non-HTTP(S) schemes, `localhost`, `.localhost`, `.local`, `.internal`, private/loopback/link-local/CGNAT IPv4 ranges (`0.0.0.0/8`, `10.0.0.0/8`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`), and IPv6 loopback/ULA/link-local addresses (`::1`, `::`, `fc*`, `fd*`, `fe80*`) on both initial URLs and every redirect hop.
+
+---
+
+## 4. Regex Patterns for Discord Bots
+
+Discord bots that automatically fix HoYoLAB links in chat messages can use the following PCRE / JavaScript / Python-compatible regular expressions (use case-insensitive matching, e.g. `i` flag in JS or `re.IGNORECASE` in Python).
+
+### 4.1 Individual Link Patterns
+
+| Link Type | Regex | Capture Groups & Mapping |
+| --- | --- | --- |
+| **HoYoLAB Long Article** (`www.`, root, or `m.hoyolab.com/#/`) | `https?:\/\/(?:(?:www\|m)\.)?hoyolab\.com\/(?:#\/)?article\/(\d+)\/?(?:\?([^\s<>)"']*))?` | `$1`: `post_id` (numeric)<br>`$2`: optional query string (e.g. `lang=ja-jp`)<br>→ Map to `https://fxhoyo.example.com/article/$1` or `/post?post_id=$1` |
+| **HoYoLAB Pre-Post** (`article_pre`) | `https?:\/\/(?:(?:www\|m)\.)?hoyolab\.com\/(?:#\/)?article_pre\/([a-zA-Z0-9_-]+)\/?(?:\?([^\s<>)"']*))?` | `$1`: `pre_post_id`<br>`$2`: optional query string<br>→ Map to `https://fxhoyo.example.com/article_pre/$1` |
+| **`hoyo.link` Short Link** (`?q=` or direct) | `https?:\/\/(?:[a-zA-Z0-9-]+\.)?hoyo\.link\/([a-zA-Z0-9_-]+)\/?(?:\?([^\s<>)"']*))?` | `$1`: `short_id`<br>`$2`: optional query string (check for `q=([^&\s<>)"']+)` for transit links)<br>→ Map to `https://fxhoyo.example.com/$1` (preserving `?q=...`) or `/sh?q=...` / `/sh?redirect=$1` |
+
+### 4.2 All-in-One Message Scanner Regex
+
+If your bot only needs to detect any supported HoYoLAB / `hoyo.link` URL and forward it to `/fix?url=<encoded_url>` (or inspect it afterward):
+
+```regex
+(?<!<)https?:\/\/(?:(?:(?:www|m)\.)?hoyolab\.com\/(?:#\/)?(?:article\/\d+|article_pre\/[a-zA-Z0-9_-]+)|(?:[a-zA-Z0-9-]+\.)?hoyo\.link\/[a-zA-Z0-9_-]+)\/?(?:\?[^\s<>)"']*)?
+```
+
+- **Why `(?<!<)`?** Discord users suppress embeds by wrapping links in angle brackets (`<https://www.hoyolab.com/article/47467158>`). The negative lookbehind prevents the bot from re-embedding links the user intentionally suppressed. (If your regex engine does not support lookbehind, omit `(?<!<)` and check the surrounding characters in code.)
+- **Why `[^\s<>)"']*` for query strings?** Stops cleanly before whitespace, Markdown link closing parentheses `)`, quotes, and `>` brackets.
+
+### 4.3 Bot-Side Routing Notes
+
+- **Handling `hoyo.link` destinations:** As noted in `research.md`, `hoyo.link/<short_id>` may redirect to non-HoYoLAB sites (such as Web Events with `?m_code=`, `itc=`, `i_code=`, `ucode=`, `u_code=`, Google Drive folders, or game downloads).
+  - If your bot delegates directly to `fxhoyo` (`https://fxhoyo.example.com/<short_id>` or `/fix?url=<encoded_url>`), `fxhoyo` automatically follows up to 6 redirects and renders either the HoYoLAB post embed or the external page's metadata.
+  - If your bot resolves redirects itself (e.g., via `aiohttp` or `fetch`) before calling `fxhoyo`, extract the `post_id` when the final URL is a HoYoLAB post and call `/post?post_id=<post_id>` (or `/article/<post_id>`), or display/pass through the resolved destination URL when it points outside HoYoLAB.
+- **Preserving Language:** If the matched query string contains `lang=<locale>` (e.g., `lang=ja-jp`), append `?lang=<locale>` to the `fxhoyo` URL so `fxhoyo` forwards `x-rpc-language` to HoYoLAB.
+
