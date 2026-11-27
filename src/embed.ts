@@ -353,9 +353,9 @@ function buildPostComponentPayload(
       if (lvl?.good_rate) details.push(`👍 ${lvl.good_rate}`);
       if (lvl?.show_limit_play_num_str) details.push(`👥 ${lvl.show_limit_play_num_str}`);
       const detailSuffix = details.length > 0 ? ` (${details.join(" · ")})` : "";
-      /* levelLines.push(
-        `🎮 **${levelName}**${detailSuffix}\n[Open in Genshin](${openGenshinUrl}) · [View Level](${viewLevelUrl})`
-      ); */
+      levelLines.push(
+        `🎮 **${levelName}**${detailSuffix}`
+      );
     }
     children.push({
       type: 10,
